@@ -1,0 +1,52 @@
+# CHARM training config for ARC-AGI.
+
+defaults:
+  - arch: trm
+  - _self_
+
+hydra:
+  output_subdir: null
+
+# Data paths are normally overridden by scripts.
+data_paths: ['data/augmented/v2/arc1_training_aug1000.parquet']
+data_paths_test: []
+
+# Canvas translation augmentation. Dihedral/color permutations are stored offline
+# in the released parquet files.
+no_translation_ratio: 0.2  # fraction of samples placed at origin (0,0) instead of random translation
+eval_passes: 1
+
+# Hyperparams - Training
+global_batch_size: 768
+grad_accum_steps: 1
+
+epochs: 100000  # TRM "effective epochs" (not real epochs)
+eval_interval: 10000  # eval every N TRM epochs
+# Optional step-based overrides for cross-dataset ablations.
+# Must be set together (or both left null).
+train_steps_override: null
+eval_interval_steps_override: null
+checkpoint_every_eval: True
+
+lr: 1e-4
+lr_min_ratio: 1.0
+lr_warmup_steps: 2000
+optimizer: adamw  # adamw | muon
+
+# Standard hyperparameter settings
+beta1: 0.9
+beta2: 0.95
+weight_decay: 0.1
+puzzle_emb_weight_decay: 0.1
+
+# Puzzle embeddings
+puzzle_emb_lr: 1e-2
+
+seed: 0
+eval_recent_window_size: null
+eval_exp_decay: False
+eval_decay_half_life: 10.0
+
+ema: False
+ema_rate: 0.999
+freeze_weights: False

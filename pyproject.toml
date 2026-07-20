@@ -1,0 +1,24 @@
+[project]
+name = "charm-arc"
+version = "0.1.0"
+description = "CHARM code release for Structured Sparse Memory for Recurrent Reasoning."
+requires-python = ">=3.12"
+dependencies = [
+  "torch",
+  "numpy",
+  "pyarrow",
+  "tqdm",
+  "hydra-core",
+  "omegaconf",
+  "pydantic",
+  "wandb",
+  "coolname",
+  "huggingface_hub",
+  "einops",
+]
+
+[tool.setuptools.packages.find]
+include = ["charm*"]
+
+[tool.setuptools.package-data]
+charm = ["config/**/*.yaml"]

@@ -1,0 +1,46 @@
+name: recursive_reasoning.trm@TinyRecursiveReasoningModel_ACTV1
+loss:
+  name: losses@ACTLossHead
+  loss_type: stablemax_cross_entropy
+
+halt_exploration_prob: 0.1
+halt_max_steps: 16
+
+H_cycles: 3
+L_cycles: 6
+
+H_layers: 0
+L_layers: 2
+
+hidden_size: 512
+num_heads: 8  # min(2, hidden_size // 64)
+expansion: 4
+
+puzzle_emb_ndim: ${.hidden_size}
+
+pos_encodings: rope
+forward_dtype: bfloat16
+
+mlp_t: False # use mlp on L instead of transformer
+puzzle_emb_len: 16 # if non-zero, its specified to this value
+no_ACT_continue: True # No continue ACT loss, only use the sigmoid of the halt which makes much more sense
+
+# Smart task embedding config
+use_smart_embed: False  # set to True to use factorized puzzle/dih/colorperm embeddings
+smart_embed_strategy: add  # "add", "film", "film_concat", "film_pc", "mlp", "raw", "raw_colorperm", "slotperm_pc", "slotperm_moe", or "hyper_aug"
+smart_embed_source: slotperm  # "slotperm" (parse strings, slot colorperm) or "separated" (dataloader indices)
+num_puzzles: 1000  # will be overridden by dataset.num_unique_puzzles
+smart_embed_dim: null  # per-head embedding dim (defaults to hidden_size)
+smart_embed_heads: 1  # number of parallel heads
+smart_embed_rank: null  # low-rank size for film_pc/slotperm_pc/hyper_aug (defaults to full rank)
+smart_embed_moe_experts: 4  # experts for slotperm_moe
+smart_embed_interaction_mode: none  # "none", "instance_residual", or "instance_residual_engram"
+smart_embed_interaction_rank: null  # low-rank size for interaction residual (null/full rank)
+smart_embed_interaction_gate: false  # gate residual with semantic embedding
+
+# how to combine task embeddings with sequence
+seq_embed_strategy: prepend  # "prepend", "add"
+
+# trm embedding mode
+trm_embedding_mode: default  # "default", "untrainable", "bitvector", "lowrank"
+puzzle_emb_lowrank_dim: 8  # dimension for lowrank embedding mode

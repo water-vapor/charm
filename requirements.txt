@@ -1,0 +1,11 @@
+torch
+numpy
+pyarrow
+tqdm
+hydra-core
+omegaconf
+pydantic
+wandb
+coolname
+huggingface_hub
+einops

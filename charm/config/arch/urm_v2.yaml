@@ -1,0 +1,36 @@
+name: recursive_reasoning.urm_v2@URM
+loss:
+  name: losses@ACTLossHead
+  loss_type: stablemax_cross_entropy
+
+loops: 16
+early_stop_training: True  # set False to disable q-based early halting during training
+input_injection: recurrent  # "layer", "recurrent", or "loop"
+num_layers: 4
+recurrent_steps: 12    # was H_cycles(2) * L_cycles(6) = 12
+tbptt_steps: 6         # was L_cycles = 6 (recurrent-level granularity)
+tbptt_layer_steps: null  # when set, use layer-level granularity (ignores tbptt_steps)
+
+hidden_size: 512
+num_heads: 8
+expansion: 4
+mlp_type: swiglu  # "swiglu" or "convswiglu"
+pos_encodings: rope  # "rope" or "rope_2d"
+puzzle_emb_ndim: ${.hidden_size}
+forward_dtype: bfloat16
+puzzle_emb_len: 16
+
+use_smart_embed: False
+smart_embed_strategy: add
+smart_embed_source: slotperm
+num_puzzles: 1000
+smart_embed_dim: null
+smart_embed_heads: 1
+smart_embed_rank: null
+smart_embed_moe_experts: 4
+smart_embed_interaction_mode: none  # "none", "instance_residual", or "instance_residual_engram"
+smart_embed_interaction_rank: null  # low-rank size for interaction residual (null/full rank)
+smart_embed_interaction_gate: false  # gate residual with semantic embedding (instance_residual only)
+seq_embed_strategy: prepend
+trm_embedding_mode: default  # "default" or "lowrank"
+puzzle_emb_lowrank_dim: 32  # dimension for lowrank embedding mode

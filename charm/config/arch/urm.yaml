@@ -1,0 +1,33 @@
+name: recursive_reasoning.urm@URM
+loss:
+  name: losses@ACTLossHead
+  loss_type: stablemax_cross_entropy
+
+# From URM_arcagi1.sh
+loops: 16
+num_layers: 4
+H_cycles: 2
+L_cycles: 6
+
+# Model architecture
+hidden_size: 512
+num_heads: 8
+expansion: 4
+puzzle_emb_ndim: ${.hidden_size}
+pos_encodings: rope
+forward_dtype: bfloat16
+puzzle_emb_len: 16
+
+# Smart embedding config
+use_smart_embed: False
+smart_embed_strategy: add
+smart_embed_source: slotperm
+num_puzzles: 1000
+smart_embed_dim: null
+smart_embed_heads: 1
+smart_embed_rank: null
+smart_embed_moe_experts: 4
+smart_embed_interaction_mode: none  # "none", "instance_residual", or "instance_residual_engram"
+smart_embed_interaction_rank: null  # low-rank size for interaction residual (null/full rank)
+smart_embed_interaction_gate: false  # gate residual with semantic embedding (instance_residual only)
+seq_embed_strategy: prepend
