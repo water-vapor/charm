@@ -2,7 +2,7 @@
 
 Code release for the paper [Structured Sparse Memory for Recurrent Reasoning](https://arxiv.org/abs/TODO).
 Checkpoints and data are hosted at [water-vapor-vx/charm-arc-agi](https://huggingface.co/datasets/water-vapor-vx/charm-arc-agi).
-The generators for the synthetic Re-ARC2 dataset are at [synth-rearc](https://github.com/water-vapor/synth-rearc).
+The generators and the dataset for the synthetic Re-ARC2 are at [synth-rearc](https://github.com/water-vapor/synth-rearc).
 
 ## Highlights
 
@@ -49,6 +49,10 @@ These use the paper's standard budgets and reach 79.6 / 38.5 pass@2. The release
 ## Baselines and ablations
 
 `scripts/baselines/` retrains the TRM and URM baselines. `scripts/ablations/` covers the paper's main ablations: `task_memory/` (CoSE variants), `color_pool/` (color-permutation pooling), `data_mix/` (synthetic-data ablations), `backbone/` (representative reasoning-depth/learning-horizon configurations), and `extra_ttc/` (replay-decay evaluator). The appendix sweeps are flag variations of these scripts.
+
+## OOD generalization and continual learning
+
+`scripts/cose_cl/` contains the ARC-2 OOD evaluation, per-puzzle test-time training, and continual-learning experiments on ARC-1 checkpoints. See `scripts/cose_cl/README.md` for more details.
 
 ## Citation
 
