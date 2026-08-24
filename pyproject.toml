@@ -21,4 +21,4 @@ dependencies = [
 include = ["charm*"]
 
 [tool.setuptools.package-data]
-charm = ["config/**/*.yaml"]
+charm = ["config/**/*.yaml", "car/*.txt"]

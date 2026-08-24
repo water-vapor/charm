@@ -1,0 +1,28 @@
+name: recursive_reasoning.car@CARURM
+loss:
+  name: losses@ACTLossHead
+  loss_type: stablemax_cross_entropy
+
+loops: 4
+early_stop_training: true
+input_injection: recurrent
+num_layers: 2
+recurrent_steps: 6
+tbptt_steps: 3
+tbptt_layer_steps: null
+
+hidden_size: 256
+num_heads: 8
+expansion: 4
+mlp_type: swiglu
+pos_encodings: rope
+forward_dtype: bfloat16
+
+puzzle_emb_ndim: ${.hidden_size}
+puzzle_emb_len: 4
+seq_embed_strategy: prepend
+use_smart_embed: false
+trm_embedding_mode: default
+
+car_task_memory_mode: full_table
+car_task_memory_rank: 16

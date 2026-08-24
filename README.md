@@ -50,6 +50,10 @@ These use the paper's standard budgets and reach 79.6 / 38.5 pass@2. The release
 
 `scripts/baselines/` retrains the TRM and URM baselines. `scripts/ablations/` covers the paper's main ablations: `task_memory/` (CoSE variants), `color_pool/` (color-permutation pooling), `data_mix/` (synthetic-data ablations), `backbone/` (representative reasoning-depth/learning-horizon configurations), and `extra_ttc/` (replay-decay evaluator). The appendix sweeps are flag variations of these scripts.
 
+## Cellular automata reasoning
+
+`scripts/car/` contains the CAR dataset builder and the task-memory experiments. See `scripts/car/README.md` for details.
+
 ## OOD generalization and continual learning
 
 `scripts/cose_cl/` contains the ARC-2 OOD evaluation, per-puzzle test-time training, and continual-learning experiments on ARC-1 checkpoints. See `scripts/cose_cl/README.md` for more details.
