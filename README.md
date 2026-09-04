@@ -50,6 +50,9 @@ These use the paper's standard budgets and reach 79.6 / 38.5 pass@2. The release
 
 `scripts/baselines/` retrains the TRM and URM baselines. `scripts/ablations/` covers the paper's main ablations: `task_memory/` (CoSE variants), `color_pool/` (color-permutation pooling), `data_mix/` (synthetic-data ablations), `backbone/` (representative reasoning-depth/learning-horizon configurations), and `extra_ttc/` (replay-decay evaluator). The appendix sweeps are flag variations of these scripts.
 
+## Components Ablation Grid with Repeats
+`scripts/ablations/component_grid` contains scripts to reproduce the main component ablation table. We also include checkpoints for all repeated runs (429GB) in the HF repo. 
+
 ## Cellular automata reasoning
 
 `scripts/car/` contains the CAR dataset builder and the task-memory experiments. See `scripts/car/README.md` for details.
