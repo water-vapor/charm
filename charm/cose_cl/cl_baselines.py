@@ -3,10 +3,10 @@
 One representative per family, each at two scopes (all shared weights, or only the
 CoSE composition params), with rows always training as in the core arms:
   ewc        Elastic Weight Consolidation: quadratic penalty weighted by a diagonal
-             Fisher estimated on donor (ARC1 pretraining) data
-  l2sp       L2-SP: plain quadratic anchor to the donor weights (EWC with identity Fisher)
-  rehearsal  experience replay: every N-th step trains on a real donor batch
-             (pretraining data — stream puzzles are still never revisited).
+             Fisher estimated on ARC1 pretraining data
+  l2sp       L2-SP: plain quadratic anchor to the base model weights (EWC with identity Fisher)
+  rehearsal  experience replay: every N-th step trains on a pretraining batch.
+             Stream puzzles are never revisited.
              Replay replaces stream steps, keeping the total number of updates fixed
 
 Kept separate from train.py so the core method carries no baseline machinery.
@@ -37,7 +37,7 @@ class Baseline:
         self.rehearsal_every = rehearsal_every
         self.fisher_batches = fisher_batches
         self.anchors = []
-        self.donor_iter = None
+        self.replay_iter = None
 
     def describe(self) -> dict:
         return {"algo": self.algo, "scope": self.scope, "reg_lambda": self.reg_lambda,
@@ -45,15 +45,15 @@ class Baseline:
 
     def attach(self, model, arm, stream, cfg: Config, local_batch: int, world: int):
         if self.algo == "rehearsal":
-            donor = ARCPerPairDataset(
-                stream.donor_paths, pair_types=stream.donor_pair_types,
-                path_multiplicities=stream.donor_multiplicities, eval_mode=False,
+            pretrain_set = ARCPerPairDataset(
+                stream.pretrain_paths, pair_types=stream.pretrain_pair_types,
+                path_multiplicities=stream.pretrain_multiplicities, eval_mode=False,
                 online_transforms=train_transforms(cfg.no_translation_ratio))
             loader = DataLoader(
-                donor, batch_size=local_batch, num_workers=2, drop_last=True,
-                sampler=RandomSampler(donor, replacement=True, num_samples=10 ** 9),
-                collate_fn=partial(puzzle_collate_fn, set_name="donor"))
-            self.donor_iter = (self.rehearsal_every, iter(loader))
+                pretrain_set, batch_size=local_batch, num_workers=2, drop_last=True,
+                sampler=RandomSampler(pretrain_set, replacement=True, num_samples=10 ** 9),
+                collate_fn=partial(puzzle_collate_fn, set_name="replay"))
+            self.replay_iter = (self.rehearsal_every, iter(loader))
             return
 
         fisher = [torch.ones_like(p) for p in arm.shared_params]
@@ -63,14 +63,14 @@ class Baseline:
                         for p, f in zip(arm.shared_params, fisher)]
 
     def _estimate_fisher(self, model, arm, stream, cfg: Config, local_batch: int, world: int):
-        """Diagonal Fisher of the task loss on donor data, normalized to mean 1."""
-        donor = ARCPerPairDataset(
-            stream.donor_paths, pair_types=stream.donor_pair_types,
-            path_multiplicities=stream.donor_multiplicities, eval_mode=False,
+        """Diagonal Fisher of the task loss on pretraining data, normalized to mean 1."""
+        pretrain_set = ARCPerPairDataset(
+            stream.pretrain_paths, pair_types=stream.pretrain_pair_types,
+            path_multiplicities=stream.pretrain_multiplicities, eval_mode=False,
             online_transforms=train_transforms(cfg.no_translation_ratio))
         loader = DataLoader(
-            donor, batch_size=local_batch, num_workers=2, drop_last=True,
-            sampler=RandomSampler(donor, replacement=True,
+            pretrain_set, batch_size=local_batch, num_workers=2, drop_last=True,
+            sampler=RandomSampler(pretrain_set, replacement=True,
                                   num_samples=local_batch * self.fisher_batches),
             collate_fn=partial(puzzle_collate_fn, set_name="fisher"))
         fisher = [torch.zeros_like(p) for p in arm.shared_params]
@@ -88,7 +88,7 @@ class Baseline:
             model.zero_grad(set_to_none=True)
         if arm.sparse_opt is not None:
             # sparse local_weights are grad-bearing buffers, not parameters: clear them
-            # or the Fisher pass's donor gradients pollute the first stream update
+            # or the Fisher pass's pretraining gradients pollute the first stream update
             arm.sparse_opt.zero_grad()
         if world > 1:
             for f in fisher:  # identical penalties on every rank
@@ -97,7 +97,7 @@ class Baseline:
         numel = sum(f.numel() for f in fisher)
         for f in fisher:
             f *= numel / total  # mean 1, so reg_lambda is comparable to l2sp
-        print(f"fisher estimated on {self.fisher_batches} donor batches")
+        print(f"fisher estimated on {self.fisher_batches} pretraining batches")
         return fisher
 
     def penalty(self):
@@ -106,7 +106,7 @@ class Baseline:
 
     def phase_kwargs(self) -> dict:
         if self.algo == "rehearsal":
-            return {"donor_iter": self.donor_iter}
+            return {"replay_iter": self.replay_iter}
         return {"penalty": self.penalty}
 
 

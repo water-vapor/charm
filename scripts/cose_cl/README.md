@@ -6,10 +6,13 @@ These experiments evaluate various ARC-1 checkpoints on unseen ARC-2 puzzles, ei
 
 ```bash
 hf download water-vapor-vx/charm-arc-agi --repo-type dataset --local-dir . \
-  --include "arc1-cl-base-checkpoints/*" "data/augmented/v2/*"
+  --include "arc1-cl-base-muon-600k/*" "data/augmented/v2/*"
 ```
 
-The five ARC-1 checkpoints use different task-memory setups but were taken from the same training step; their performance on ARC-1 is similar.
+The eight ARC-1 checkpoints use Muon and were taken at step 600000.
+All launchers default to `arc1-cl-base-muon-600k/` in the project root and
+`CHECKPOINT_STEP=600000`. Set `CHECKPOINT_DIR` to use this folder from another
+location. The default `cose_lowrank` checkpoint does not use gate.
 
 | Variant | Task memory |
 |---|---|
@@ -18,6 +21,13 @@ The five ARC-1 checkpoints use different task-memory setups but were taken from 
 | `table_lowrank` | No CoSE; a rank-32 per-instance task table. |
 | `table_fullrank` | No CoSE; the standard 512-dimensional per-instance task table. |
 | `compo_only` | The CoSE compositional branch without a per-instance residual. |
+| `cose_lowrank_gate` | CoSE with a gated rank-32 per-instance residual. |
+| `cose_lowrank_t32` | CoSE with 32-dimensional task-ID rows and a rank-32 per-instance residual. |
+| `compo_only_t32` | The compositional branch with 32-dimensional task-ID rows and no per-instance residual. |
+
+To disable halt loss, append `--halt_loss_weight 0.0` to any CoSE-CL launcher or baseline to use
+`lm_loss + 0.0 * (q_halt_loss + q_continue_loss)`. The default coefficient is
+`0.5`.
 
 The folder includes representative launchers for the four frozen CL variants,
 the five reset baselines, a full-model EWC run, and a frozen CoSE low-rank run
@@ -38,7 +48,7 @@ scripts/cose_cl/arc2_eval_cose_lowrank_frozen.sh
 | Frozen CL | Trains and retains only the new puzzle-specific embeddings while keeping the shared backbone frozen. |
 | Naive CL | Fine-tunes the full model sequentially without protection against forgetting. |
 | Joint / joint-all | Both train on all stream puzzles together; `joint` updates new rows only, while `joint_all` also updates shared weights. Neither is continual learning. |
-| EWC / L2-SP / rehearsal | Continual-learning baselines that regularize shared weights or replay donor data. `all` and `comp` select all shared weights or only CoSE composition parameters. |
+| EWC / L2-SP / rehearsal | Continual-learning baselines that regularize shared weights or replay ARC-AGI-1 data. `all` and `comp` select all shared weights or only CoSE composition parameters. |
 
 ## Other configurations
 
@@ -48,18 +58,17 @@ scripts/cose_cl/arc2_eval_cose_lowrank_frozen.sh
 SEED=0 scripts/cose_cl/run.sh STREAM VARIANT METHOD [trainer args...]
 ```
 
-Replace `VARIANT` with `cose_lowrank`, `cose_fulltable`, `table_lowrank`, or
-`table_fullrank`; `compo_only` is also used for reset and joint-all. Replace
-`SCOPE` with `all` or `comp`.
+Replace `VARIANT` with one of the variants in the table above.
+Replace `SCOPE` with `all` or `comp`.
 
 | Stream | Configuration | CLI |
 |---|---|---|
 | ARC-2 training | Naive CL | `scripts/cose_cl/run.sh arc2_training cose_lowrank naive` |
 | ARC-2 training | Joint rows, four main variants | `scripts/cose_cl/run.sh arc2_training VARIANT joint` |
-| ARC-2 training | Joint full model, all five variants | `scripts/cose_cl/run.sh arc2_training VARIANT joint_all` |
+| ARC-2 training | Joint full model, all eight variants | `scripts/cose_cl/run.sh arc2_training VARIANT joint_all` |
 | ARC-2 training | EWC, composition scope | `scripts/cose_cl/run.sh arc2_training cose_lowrank ewc_comp --reg_lambda 1e-2 --fisher_batches 64` |
 | ARC-2 training | L2-SP, either scope | `scripts/cose_cl/run.sh arc2_training cose_lowrank l2sp_SCOPE --reg_lambda 1e-1` |
 | ARC-2 training | Rehearsal, either scope | `scripts/cose_cl/run.sh arc2_training cose_lowrank rehearsal_SCOPE --rehearsal_every 2` |
 | ARC-2 eval | Frozen CL, remaining main variants | `scripts/cose_cl/run.sh arc2_eval VARIANT frozen` |
-| ARC-2 eval | Reset, all five variants | `scripts/cose_cl/run.sh arc2_eval VARIANT reset` |
-| ARC-2 eval | Joint full model, all five variants | `scripts/cose_cl/run.sh arc2_eval VARIANT joint_all` |
+| ARC-2 eval | Reset, all eight variants | `scripts/cose_cl/run.sh arc2_eval VARIANT reset` |
+| ARC-2 eval | Joint full model, all eight variants | `scripts/cose_cl/run.sh arc2_eval VARIANT joint_all` |

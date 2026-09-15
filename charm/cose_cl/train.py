@@ -30,7 +30,7 @@ from charm.cose_cl.config import parse_args
 from charm.cose_cl.data import Stream, arc1_eval_set, eval_batches
 from charm.cose_cl.evaluator import CoSEEvaluator
 from charm.cose_cl.model import (
-    build_model, donor_drift, donor_snapshot, inner_module, load_expanded, setup_arm)
+    build_model, base_row_drift, base_row_snapshot, inner_module, load_expanded, setup_arm)
 from charm.models.smart_task_embedding import SmartTaskEmbedding
 from charm.training_utils.runtime import (
     broadcast_model_state, init_distributed_environment)
@@ -104,26 +104,26 @@ def joint_batches(stream, order, cfg, stage, local_batch, rank, world):
 
 
 def train_phase(model, arm, loader, cfg, gstep, world, embed_opt=None, estep=None,
-                donor_iter=None, penalty=None):
+                replay_iter=None, penalty=None):
     """One stage. embed_opt/estep are passed in by joint arms so semantic-row momentum
     and warmup persist across virtual stage boundaries; sequential arms use a fresh
-    optimizer per stage. donor_iter and penalty are seams for the CL baselines; donor
+    optimizer per stage. replay_iter and penalty support the CL baselines; replay
     and stream batches keep separate ACT carries so row-update gating by step type is
-    exact (mixed carries would let donor samples receive updates on stream steps)."""
+    exact (mixed carries would let pretraining samples receive updates on stream steps)."""
     model.train()
     if estep is None:  # plain-table variants have no embed_opt, so estep is the sentinel
         embed_opt = arm.fresh_embed_opt()
         estep = [0]
     trainable = [p for p in model.parameters() if p.requires_grad]
-    carries = {"stream": None, "donor": None}
+    carries = {"stream": None, "replay": None}
     exact_sum = count_sum = 0
     lm_sum = 0.0
     stream_steps = 0
     stream_iter = iter(loader)
     for step in range(1, cfg.stage_steps + 1):
-        donor_step = donor_iter is not None and step % donor_iter[0] == 0
-        source = "donor" if donor_step else "stream"
-        _, batch, _ = next(donor_iter[1]) if donor_step else next(stream_iter)
+        replay_step = replay_iter is not None and step % replay_iter[0] == 0
+        source = "replay" if replay_step else "stream"
+        _, batch, _ = next(replay_iter[1]) if replay_step else next(stream_iter)
         gpu_batch = to_device(batch, cfg.device)
         if carries[source] is None:
             with torch.device(cfg.device):
@@ -142,17 +142,17 @@ def train_phase(model, arm, loader, cfg, gstep, world, embed_opt=None, estep=Non
                     dist.all_reduce(p.grad)
             dist.all_reduce(reduced)
 
-        if not donor_step:
+        if not replay_step:
             estep[0] += 1
         row_scale = min(1.0, estep[0] / max(1, cfg.warmup_steps))
         if embed_opt is not None:
-            if not donor_step:
+            if not replay_step:
                 for group in embed_opt.param_groups:
                     group["lr"] = cfg.embed_lr * row_scale
                 embed_opt.step()
             embed_opt.zero_grad()
         if arm.sparse_opt is not None:
-            if not donor_step:
+            if not replay_step:
                 for group in arm.sparse_opt.param_groups:
                     group["lr"] = cfg.sparse_lr * row_scale
                 arm.sparse_opt.step()
@@ -165,7 +165,7 @@ def train_phase(model, arm, loader, cfg, gstep, world, embed_opt=None, estep=Non
             arm.shared_opt.zero_grad()
         model.zero_grad(set_to_none=True)
 
-        if donor_step:
+        if replay_step:
             continue
         stream_steps += 1
         exact_sum += float(reduced[0])
@@ -238,16 +238,16 @@ def run(cfg, baseline=None):
         assert not os.path.exists(os.path.join(cfg.out_dir, "log.jsonl")), \
             f"{cfg.out_dir} already holds a run; pass --resume or use a fresh out_dir"
     with open(cfg.ckpt_config) as f:
-        donor_cfg = yaml.safe_load(f)
+        base_cfg = yaml.safe_load(f)
 
-    stream = Stream(donor_cfg, cfg.data_dir, cfg.stream_parquet,
+    stream = Stream(base_cfg, cfg.data_dir, cfg.stream_parquet,
                     cfg.no_translation_ratio, cfg.eval_augs)
     order = stream.order(cfg.order_seed, cfg.n_puzzles)
     N = len(order)
     joint = cfg.arm in ("joint", "joint_all")
     train_shared = cfg.arm in ("naive", "reset", "joint_all") or baseline is not None
     if main:
-        print(f"donor vocab={stream.donor_vocab} puzzles={stream.donor_puzzles} "
+        print(f"base vocab={stream.base_vocab} puzzles={stream.base_puzzles} "
               f"fingerprints={stream.fingerprints} | "
               f"expanded vocab={stream.vocab} puzzles={stream.num_puzzles} | "
               f"stream N={N} | world={world} local_batch={local_batch}")
@@ -255,8 +255,8 @@ def run(cfg, baseline=None):
             yaml.safe_dump(asdict(cfg) | {"mapping_fingerprints": stream.fingerprints}
                            | ({"baseline": baseline.describe()} if baseline else {}), f)
 
-    model = build_model(donor_cfg["arch"], stream.vocab, stream.num_puzzles,
-                        local_batch, cfg.device)
+    model = build_model(base_cfg["arch"], stream.vocab, stream.num_puzzles,
+                        local_batch, cfg.device, halt_loss_weight=cfg.halt_loss_weight)
     info = load_expanded(model, cfg.ckpt, cfg.device)
     broadcast_model_state(model, world_size=world)
     if main:
@@ -265,10 +265,10 @@ def run(cfg, baseline=None):
                     comp_only=baseline.comp_only if baseline else False, world_size=world)
     if baseline:
         baseline.attach(model, arm, stream, cfg, local_batch, world)
-    snap = donor_snapshot(model, stream.donor_vocab, stream.donor_puzzles) if main else None
-    donor_state = None
+    snap = base_row_snapshot(model, stream.base_vocab, stream.base_puzzles) if main else None
+    base_state = None
     if cfg.arm == "reset":
-        donor_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
+        base_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
     joint_embed_opt = joint_estep = None
     if joint:
         joint_embed_opt = arm.fresh_embed_opt()
@@ -286,6 +286,8 @@ def run(cfg, baseline=None):
     if resuming:
         state = torch.load(latest, map_location=cfg.device, weights_only=False)
         saved = {k: v for k, v in state["config"].items() if k != "resume"}
+        # Runs saved before this option used the fixed 0.5 coefficient.
+        saved.setdefault("halt_loss_weight", 0.5)
         current_cfg = {k: v for k, v in asdict(cfg).items() if k != "resume"}
         assert saved == current_cfg and state["order"] == order, \
             "resume config/order mismatch — refusing to mix experiments"
@@ -337,7 +339,7 @@ def run(cfg, baseline=None):
             log({"type": "arc1", "when": "before", "stage": -1,
                  "pass1": p1, "pass2": p2})
 
-    # zero-shot sweep = the "pure composition" baseline: blank rows, untouched donor
+    # zero-shot sweep = the "pure composition" baseline: blank rows, untouched base model
     # (skipped on resume: it is deterministic and already recorded as R rows[0])
     if not resuming:
         zero_pp, zero1, zero2 = sweep(model, stream, order, cfg, rank, world)
@@ -354,7 +356,7 @@ def run(cfg, baseline=None):
 
     for stage in range(start_stage, N):
         if cfg.arm == "reset":
-            model.load_state_dict(donor_state)
+            model.load_state_dict(base_state)
             arm = setup_arm(model, cfg, train_shared, world_size=world)
             gstep = [0]
         t0 = time.time()
@@ -417,7 +419,7 @@ def run(cfg, baseline=None):
                 R1_rows.append([current[p][1] for p in order])
                 R2_rows.append([current[p][2] for p in order])
                 event_stages.append(stage)
-                drift = donor_drift(model, snap)
+                drift = base_row_drift(model, snap)
                 learned_drift = new_row_drift(model, stream, learned_snap)
                 if joint:  # joint rows train throughout; sequential references are permanent
                     learned_snap = new_row_snapshot(model, stream, sorted(seen))
@@ -426,7 +428,7 @@ def run(cfg, baseline=None):
                      "learned_row_drift": learned_drift,
                      **{f"drift_{k}": v for k, v in drift.items()}})
                 print(f"  sweep@{stage}: pass@1={s1:.4f} pass@2={s2:.4f} "
-                      f"mismatch@1/2={mismatch1}/{mismatch2} donor_drift={drift} "
+                      f"mismatch@1/2={mismatch1}/{mismatch2} base_row_drift={drift} "
                       f"learned_row_drift={learned_drift}")
         if checkpoint:
             if main:

@@ -38,10 +38,11 @@ def softmax_cross_entropy(logits, labels, ignore_index: int = -100):
 
 
 class ACTLossHead(nn.Module):
-    def __init__(self, model: nn.Module, loss_type: str):
+    def __init__(self, model: nn.Module, loss_type: str, halt_loss_weight: float = 0.5):
         super().__init__()
         self.model = model
         self.loss_fn = globals()[loss_type]
+        self.halt_loss_weight = halt_loss_weight
         
     def initial_carry(self, *args, **kwargs):
         return self.model.initial_carry(*args, **kwargs)  # type: ignore
@@ -97,6 +98,6 @@ class ACTLossHead(nn.Module):
             metrics["q_continue_loss"] = q_continue_loss.detach()
         # Filter outputs for return
         detached_outputs = {k: outputs[k].detach() for k in return_keys if k in outputs}
-        total_loss = lm_loss + 0.5 * (q_halt_loss + q_continue_loss)
+        total_loss = lm_loss + self.halt_loss_weight * (q_halt_loss + q_continue_loss)
 
         return new_carry, total_loss, metrics, detached_outputs, new_carry.halted.all()

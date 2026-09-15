@@ -1,10 +1,10 @@
-"""Donor id mapping, the new-puzzle stream, and evaluation batching.
+"""Pretraining ID mapping, the new-puzzle stream, and evaluation batching.
 
-The donor mapping is rebuilt from the same parquets the checkpoint was trained on
+The pretraining mapping is rebuilt from the same parquets the base model was trained on
 (this reproduces its embedding-table row order exactly; verified against the
 checkpoints' table sizes). The stream parquet is registered on top, so stream
-puzzles get fresh semantic/instance ids appended after the donor's. Puzzles the
-donor has already seen are excluded from the stream.
+puzzles get fresh semantic/instance IDs appended after the pretraining IDs. Puzzles
+seen during pretraining are excluded from the stream.
 """
 
 import os
@@ -42,23 +42,25 @@ def pair_indices_by_puzzle(ds: ARCPerPairDataset, max_augs: int | None = None) -
 
 
 class Stream:
-    def __init__(self, donor_cfg: dict, data_dir: str, stream_parquet: str,
+    def __init__(self, base_cfg: dict, data_dir: str, stream_parquet: str,
                  no_translation_ratio: float, eval_augs: int):
-        test_names = {os.path.basename(p) for p in donor_cfg.get("data_paths_test") or []}
-        self.donor_paths = [os.path.join(data_dir, os.path.basename(p))
-                            for p in donor_cfg["data_paths"]]
-        self.donor_pair_types = donor_cfg.get("pair_types") or [
-            "train" if os.path.basename(p) in test_names else "both" for p in self.donor_paths]
-        self.donor_multiplicities = donor_cfg.get("data_path_multiplicities")
-        donor = ARCPerPairDataset(self.donor_paths, pair_types=self.donor_pair_types,
-                                  eval_mode=False, online_transforms=None)
-        self.donor_vocab = donor.puzzle_embed_vocab_size
-        self.donor_puzzles = donor.num_unique_puzzles
+        test_names = {os.path.basename(p) for p in base_cfg.get("data_paths_test") or []}
+        self.pretrain_paths = [os.path.join(data_dir, os.path.basename(p))
+                               for p in base_cfg["data_paths"]]
+        self.pretrain_pair_types = base_cfg.get("pair_types") or [
+            "train" if os.path.basename(p) in test_names else "both" for p in self.pretrain_paths]
+        self.pretrain_multiplicities = base_cfg.get("data_path_multiplicities")
+        pretrain_set = ARCPerPairDataset(
+            self.pretrain_paths, pair_types=self.pretrain_pair_types,
+            eval_mode=False, online_transforms=None)
+        self.base_vocab = pretrain_set.puzzle_embed_vocab_size
+        self.base_puzzles = pretrain_set.num_unique_puzzles
 
         self.train_set = ARCPerPairDataset(
             [stream_parquet], pair_types=["train"], eval_mode=False,
             online_transforms=train_transforms(no_translation_ratio),
-            unique_str_to_int=donor.unique_str_to_int, puzzle_id_to_int=donor.puzzle_id_to_int)
+            unique_str_to_int=pretrain_set.unique_str_to_int,
+            puzzle_id_to_int=pretrain_set.puzzle_id_to_int)
         self.eval_set = ARCPerPairDataset(
             [stream_parquet], eval_mode=True, online_transforms=eval_transforms(),
             unique_str_to_int=self.train_set.unique_str_to_int,
@@ -71,15 +73,15 @@ class Stream:
                                self.eval_set.num_unique_puzzles)
 
         by_idx = sorted(self.train_set.puzzle_id_to_int.items(), key=lambda kv: kv[1])
-        self.puzzle_ids = [pid for pid, idx in by_idx if idx >= self.donor_puzzles]
+        self.puzzle_ids = [pid for pid, idx in by_idx if idx >= self.base_puzzles]
         self.train_pairs = pair_indices_by_puzzle(self.train_set)
         self.eval_pairs = pair_indices_by_puzzle(self.eval_set, max_augs=eval_augs)
         self.gt_inputs = self.eval_set.get_noaug_test_inputs()
         self.gt_outputs = self.eval_set.get_noaug_test_outputs()
-        # audit trail: donor-mapping digests (must be stable across every run of a campaign)
+        # audit trail: pretraining mapping digests (must be stable across every run of a campaign)
         self.fingerprints = {
-            "instance": _mapping_fingerprint(donor.unique_str_to_int)["sha256"],
-            "semantic": _mapping_fingerprint(donor.puzzle_id_to_int)["sha256"]}
+            "instance": _mapping_fingerprint(pretrain_set.unique_str_to_int)["sha256"],
+            "semantic": _mapping_fingerprint(pretrain_set.puzzle_id_to_int)["sha256"]}
         # instance-id span per puzzle (registration is contiguous per parquet row)
         table = self.train_set.pairs
         row_puzzle = np.asarray(table.unique_puzzle_idx)[np.asarray(table.row_unique_idx)]
@@ -112,7 +114,7 @@ class Stream:
 
 
 def arc1_eval_set(data_dir: str, stream: Stream, n_puzzles: int, max_augs: int):
-    """ARC1 eval-split dataset under the donor mapping, for the retention probe."""
+    """ARC1 eval-split dataset under the pretraining mapping, for the retention probe."""
     ds = ARCPerPairDataset(
         [os.path.join(data_dir, "arc1_eval_aug1000.parquet")], eval_mode=True,
         online_transforms=eval_transforms(),

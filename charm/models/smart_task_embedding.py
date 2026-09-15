@@ -44,6 +44,7 @@ class SmartTaskEmbedding(nn.Module):
         interaction_rank: int | None = None,
         interaction_use_gate: bool = False,
         num_instance_embeddings: int | None = None,
+        smart_embed_task_dim: int | None = None,
     ):
         """
         Args:
@@ -54,6 +55,8 @@ class SmartTaskEmbedding(nn.Module):
             embed_source: "slotperm" (parse strings, slot colorperm) or "separated" (dataloader indices)
             per_aug_vocab_sizes: vocab sizes for each aug type (required for separated mode)
             smart_embed_dim: per-head embedding dimension (defaults to hidden_size)
+            smart_embed_task_dim: task-ID table width only (defaults to heads * per-head
+                dimension); projected to the composition width before combining with augmentations
             smart_embed_heads: number of parallel heads (defaults to 1)
             smart_embed_rank: low-rank size for film_pc (defaults to full rank)
             batch_size: batch size (required for sparse colorperm embedding)
@@ -73,6 +76,9 @@ class SmartTaskEmbedding(nn.Module):
         self.smart_embed_heads = smart_embed_heads
         self.head_dim = smart_embed_dim if smart_embed_dim is not None else hidden_size
         self.total_dim = self.head_dim * self.smart_embed_heads
+        self.task_dim = self.total_dim if smart_embed_task_dim is None else smart_embed_task_dim
+        if self.task_dim < 1:
+            raise ValueError("smart_embed_task_dim must be >= 1")
         self.smart_embed_rank = smart_embed_rank
         self.smart_embed_moe_experts = smart_embed_moe_experts
         self.interaction_mode = interaction_mode
@@ -96,8 +102,13 @@ class SmartTaskEmbedding(nn.Module):
 
         # Puzzle ID embedding (double size if dual mode)
         actual_num_puzzles = num_puzzles * 2 if puzzle_embed_dual else num_puzzles
-        self.puzzle_embed = nn.Embedding(actual_num_puzzles, self.total_dim)
+        self.puzzle_embed = nn.Embedding(actual_num_puzzles, self.task_dim)
         nn.init.zeros_(self.puzzle_embed.weight)
+        # Identity preserves the original parameters and initialization when unset.
+        self.puzzle_embed_up_proj = (
+            nn.Identity() if self.task_dim == self.total_dim
+            else nn.Linear(self.task_dim, self.total_dim, bias=False)
+        )
 
         self.use_sparse_colorperm = False  # default, may be overridden in separated branch
         self.use_sparse_instance_residual = False
@@ -520,7 +531,7 @@ class SmartTaskEmbedding(nn.Module):
         puzzle_embed_idxs: torch.Tensor | None = None,
     ) -> torch.Tensor:
         device = puzzle_idxs.device
-        puzzle_emb = self._get_puzzle_embedding(puzzle_idxs)
+        puzzle_emb = self.puzzle_embed_up_proj(self._get_puzzle_embedding(puzzle_idxs))
         if self.embed_source == "slotperm_full":
             dih_emb = self._get_dih_embedding(dih_idxs.to(device))
         else:

@@ -6,7 +6,7 @@ outputs/
 wandb/
 data/
 checkpoints/
-arc1-cl-base-checkpoints/
+arc1-cl-base-muon-600k/
 .cache/
 build/
 *.egg-info/

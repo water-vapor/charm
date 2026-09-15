@@ -4,7 +4,8 @@ set -euo pipefail
 COSE_CL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$COSE_CL_DIR/../_common.sh"
 
-CHECKPOINT_DIR="${CHECKPOINT_DIR:-$PROJECT_ROOT/arc1-cl-base-checkpoints}"
+CHECKPOINT_DIR="${CHECKPOINT_DIR:-$PROJECT_ROOT/arc1-cl-base-muon-600k}"
+CHECKPOINT_STEP="${CHECKPOINT_STEP:-600000}"
 CL_DATA_DIR="${CL_DATA_DIR:-$AUGMENTED_DATA_ROOT}"
 CL_OUTPUT_ROOT="${CL_OUTPUT_ROOT:-$PROJECT_ROOT/outputs/cose_cl}"
 
@@ -14,6 +15,9 @@ usage: run.sh STREAM VARIANT METHOD [trainer args...]
 
 STREAM:  arc2_training | arc2_eval
 VARIANT: cose_lowrank | cose_fulltable | table_lowrank | table_fullrank | compo_only
+         cose_lowrank_gate | cose_lowrank_t32 | compo_only_t32
+BASE:    CHECKPOINT_DIR defaults to PROJECT_ROOT/arc1-cl-base-muon-600k;
+         CHECKPOINT_STEP defaults to 600000.
 METHOD:  frozen | naive | reset | joint | joint_all
          ewc_all | ewc_comp | l2sp_all | l2sp_comp | rehearsal_all | rehearsal_comp
 EOF
@@ -62,24 +66,36 @@ run_cose_cl() {
   local checkpoint_name config_name
   case "$variant" in
     cose_lowrank)
-      checkpoint_name=arc1-default-step_480000.pt
+      checkpoint_name=arc1-default-step_${CHECKPOINT_STEP}.pt
       config_name=default.yaml
       ;;
     cose_fulltable)
-      checkpoint_name=arc1-default-fulltb-step_480000.pt
+      checkpoint_name=arc1-default-fulltb-step_${CHECKPOINT_STEP}.pt
       config_name=default-fulltb.yaml
       ;;
     table_lowrank)
-      checkpoint_name=arc1-lowrank-step_480000.pt
+      checkpoint_name=arc1-lowrank-step_${CHECKPOINT_STEP}.pt
       config_name=lowrank.yaml
       ;;
     table_fullrank)
-      checkpoint_name=arc1-fulltable-step_480000.pt
+      checkpoint_name=arc1-fulltable-step_${CHECKPOINT_STEP}.pt
       config_name=full-table.yaml
       ;;
     compo_only)
-      checkpoint_name=arc1-compo-only-step_480000.pt
+      checkpoint_name=arc1-compo-only-step_${CHECKPOINT_STEP}.pt
       config_name=compo-only.yaml
+      ;;
+    cose_lowrank_gate)
+      checkpoint_name=arc1-default-with-gate-step_${CHECKPOINT_STEP}.pt
+      config_name=default-with-gate.yaml
+      ;;
+    cose_lowrank_t32)
+      checkpoint_name=arc1-default-t32-step_${CHECKPOINT_STEP}.pt
+      config_name=default-t32.yaml
+      ;;
+    compo_only_t32)
+      checkpoint_name=arc1-compo-only-t32-step_${CHECKPOINT_STEP}.pt
+      config_name=compo-only-t32.yaml
       ;;
     *)
       echo "unknown checkpoint variant: $variant" >&2

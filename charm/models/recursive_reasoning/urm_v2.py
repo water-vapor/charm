@@ -47,6 +47,7 @@ class URMConfig(BaseModel):
     num_puzzles: int = 1000
     per_aug_vocab_sizes: dict = {}
     smart_embed_dim: int | None = None
+    smart_embed_task_dim: int | None = None
     smart_embed_heads: int = 1
     smart_embed_rank: int | None = None
     smart_embed_moe_experts: int = 4
@@ -167,6 +168,7 @@ class URM_Inner(nn.Module):
                     embed_source=self.config.smart_embed_source,
                     per_aug_vocab_sizes=self.config.per_aug_vocab_sizes,
                     smart_embed_dim=self.config.smart_embed_dim,
+                    smart_embed_task_dim=self.config.smart_embed_task_dim,
                     smart_embed_heads=self.config.smart_embed_heads,
                     smart_embed_rank=self.config.smart_embed_rank,
                     smart_embed_moe_experts=self.config.smart_embed_moe_experts,

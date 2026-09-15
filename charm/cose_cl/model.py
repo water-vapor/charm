@@ -1,4 +1,4 @@
-"""Donor model construction, EMA-merged loading with table expansion, and arm setup."""
+"""Base model construction, EMA-merged loading with table expansion, and arm setup."""
 
 import os
 from dataclasses import dataclass, field
@@ -26,11 +26,13 @@ def inner_module(model: nn.Module):
 
 
 def build_model(arch: dict, puzzle_vocab: int, num_puzzles: int, batch_size: int,
-                device: str) -> nn.Module:
+                device: str, *, halt_loss_weight: float | None = None) -> nn.Module:
     arch = dict(arch)
     assert not arch.get("puzzle_embed_dual"), \
         "dual semantic tables store two banks; end-padding expansion would corrupt them"
     loss = dict(arch.pop("loss"))
+    if halt_loss_weight is not None:
+        loss["halt_loss_weight"] = halt_loss_weight
     model_cls = load_model_class(arch.pop("name"))
     loss_cls = load_model_class(loss.pop("name"))
     model_cfg = dict(arch, batch_size=batch_size, vocab_size=VOCAB_SIZE, seq_len=SEQ_LEN,
@@ -46,7 +48,7 @@ def build_model(arch: dict, puzzle_vocab: int, num_puzzles: int, batch_size: int
 def load_expanded(model: nn.Module, ckpt_path: str, device: str) -> dict:
     """Load model_state_dict with EMA parameters merged in; zero-pad the expandable tables.
 
-    EMA covers parameters only (the reported donor numbers were measured with EMA
+    EMA covers parameters only (the reported base model results were measured with EMA
     weights); sparse tables are buffers and load as saved.
     """
     payload = torch.load(ckpt_path, map_location=device, weights_only=False)
@@ -87,7 +89,7 @@ class Arm:
 
     def fresh_embed_opt(self):
         # Fresh per stage: no momentum carry-over between puzzles. weight_decay=0 so
-        # rows outside the current batch (all donor rows) are exact no-ops.
+        # rows outside the current batch (all pretrained rows) are exact no-ops.
         if self.embed_param is None:
             return None
         return AdamW([self.embed_param], lr=0, weight_decay=0.0, betas=self.beta)
@@ -143,20 +145,20 @@ def setup_arm(model: nn.Module, cfg, train_shared: bool, comp_only: bool = False
                shared_params=shared_params, shared_lr=cfg.ft_lr, beta=(cfg.beta1, cfg.beta2))
 
 
-def donor_snapshot(model: nn.Module, donor_vocab: int, donor_puzzles: int) -> dict:
-    """CPU clone of the donor-owned table regions, for drift verification at sweeps."""
+def base_row_snapshot(model: nn.Module, base_vocab: int, base_puzzles: int) -> dict:
+    """CPU clone of the base model's table rows, for drift verification at sweeps."""
     puzzle_emb = inner_module(model).puzzle_emb
     snap = {}
     if isinstance(puzzle_emb, SmartTaskEmbedding):
-        snap["semantic"] = puzzle_emb.puzzle_embed.weight[:donor_puzzles].detach().cpu().clone()
+        snap["semantic"] = puzzle_emb.puzzle_embed.weight[:base_puzzles].detach().cpu().clone()
         if puzzle_emb.use_sparse_instance_residual:
-            snap["instance"] = puzzle_emb.instance_residual_embed.weights[:donor_vocab].detach().cpu().clone()
+            snap["instance"] = puzzle_emb.instance_residual_embed.weights[:base_vocab].detach().cpu().clone()
     else:
-        snap["instance"] = puzzle_emb.weights[:donor_vocab].detach().cpu().clone()
+        snap["instance"] = puzzle_emb.weights[:base_vocab].detach().cpu().clone()
     return snap
 
 
-def donor_drift(model: nn.Module, snap: dict) -> dict[str, float]:
+def base_row_drift(model: nn.Module, snap: dict) -> dict[str, float]:
     puzzle_emb = inner_module(model).puzzle_emb
     drift = {}
     for name, ref in snap.items():

@@ -1,10 +1,10 @@
-"""CoSE-CL: continual learning of new puzzles on a frozen ARC1 donor checkpoint.
+"""CoSE-CL: continual learning of new puzzles from an ARC1 base checkpoint.
 
-Each stream puzzle gets fresh rows appended to the donor's embedding tables; what
+Each stream puzzle gets fresh rows appended to the base model's embedding tables; what
 else trains depends on the arm:
-  frozen     new rows only (the method); donor weights provably untouched
+  frozen     new rows only (the method); base model weights provably untouched
   naive      everything, sequentially (catastrophic-forgetting lower bound)
-  reset      everything, but the donor is restored before every puzzle
+  reset      everything, but the base checkpoint is restored before every puzzle
              (per-puzzle fine-tuning oracle; no continual learning)
   joint      new rows only, all stream puzzles trained at once (order-free reference)
   joint_all  everything, all stream puzzles at once (multi-task upper bound)
@@ -55,16 +55,17 @@ class Config:
     run_name: str
     resume: bool
     device: str
+    halt_loss_weight: float = 0.5
 
 
 def add_shared_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--ckpt", required=True, help="donor checkpoint .pt")
-    p.add_argument("--ckpt_config", required=True, help="donor training config yaml")
+    p.add_argument("--ckpt", required=True, help="base checkpoint .pt")
+    p.add_argument("--ckpt_config", required=True, help="base model pretraining config yaml")
     p.add_argument("--stream_parquet", required=True, help="augmented v2 parquet of the CL stream")
     p.add_argument("--out_dir", required=True)
     p.add_argument("--data_dir", default="data/augmented/v2",
-                   help="local dir holding the donor's training parquets (basename-matched)")
-    p.add_argument("--n_puzzles", type=int, default=0, help="0 = all donor-unseen stream puzzles")
+                   help="local dir holding the base model's pretraining parquets (basename-matched)")
+    p.add_argument("--n_puzzles", type=int, default=0, help="0 = all stream puzzles unseen during pretraining")
     p.add_argument("--order_seed", type=int, default=0)
     p.add_argument("--seed", type=int, default=0)
 
@@ -80,6 +81,8 @@ def add_shared_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--beta1", type=float, default=0.9)
     p.add_argument("--beta2", type=float, default=0.95)
     p.add_argument("--no_translation_ratio", type=float, default=0.2)
+    p.add_argument("--halt_loss_weight", type=float, default=0.5,
+                   help="coefficient for q_halt_loss + q_continue_loss; 0 disables their loss contribution")
 
     p.add_argument("--eval_batch_size", type=int, default=256)
     p.add_argument("--eval_augs", type=int, default=128,
