@@ -1,6 +1,6 @@
 # CHARM: Structured Sparse Memory for Recurrent Reasoning
 
-Code release for the paper [Structured Sparse Memory for Recurrent Reasoning](https://arxiv.org/abs/TODO).
+Code release for [Structured Sparse Memory for Recurrent Reasoning](https://arxiv.org/abs/2609.33270), accepted to **NeurIPS 2026**. The arXiv preprint is available; the conference version is forthcoming. 
 Checkpoints and data are hosted at [water-vapor-vx/charm-arc-agi](https://huggingface.co/datasets/water-vapor-vx/charm-arc-agi).
 The generators and the dataset for the synthetic Re-ARC2 are at [synth-rearc](https://github.com/water-vapor/synth-rearc).
 
@@ -67,6 +67,10 @@ These use the paper's standard budgets and reach 79.6 / 38.5 pass@2. The release
 @misc{zhao2026structuredsparsememory,
   title = {Structured Sparse Memory for Recurrent Reasoning},
   author = {Zhao, Zixuan and Wheeler, Samuel and Getty, Neil and Duan, Xiaotian and Stevens, Rick and Xia, Fangfang},
-  year = {2026}
+  year = {2026},
+  eprint = {2609.33270},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.AI},
+  url = {https://arxiv.org/abs/2609.33270}
 }
 ```
